@@ -2,6 +2,13 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+import groovy.json.JsonSlurper
+
+// package.json is two folders up from android/app/
+def pkg = new JsonSlurper().parseText(file("../../package.json").text)
+def cleanVersion = pkg.version.split('-')[0]   // drops "-beta.1" style suffixes
+def (major, minor, patch) = cleanVersion.tokenize('.').collect { it.toInteger() }
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -82,8 +89,8 @@ android {
         applicationId "com.checked"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode major * 10000 + minor * 100 + patch
+        versionName pkg.version
     }
     signingConfigs {
         debug {
@@ -92,16 +99,20 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            storeFile file(MYAPP_UPLOAD_STORE_FILE)
+            storePassword MYAPP_UPLOAD_STORE_PASSWORD
+            keyAlias MYAPP_UPLOAD_KEY_ALIAS
+            keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            minifyEnabled enableProguardInReleaseBuilds
+            signingConfig signingConfigs.release
+            minifyEnabled true
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
