@@ -9,6 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Kiosk } from '../services/kiosk';
 import { useMMKVBoolean } from 'react-native-mmkv';
 import { Button, Dialog, Portal, Text } from 'react-native-paper';
+import SystemNavigationBar from 'react-native-system-navigation-bar';
 
 const EUjianVersion = "3.1.4"
 
@@ -93,6 +94,16 @@ export default function BrowserScreen() {
   const [warningExitDialog, setWarningExitDialog] = useState(false);
   const [lastWarningExitDialog, setLastWarningExitDialog] = useState(false);
   
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    if (hidden) {
+      SystemNavigationBar.setImmersive("sticky");
+    } else {
+      SystemNavigationBar.show();
+    }
+  }, [hidden]);
+
   const handleRefresh = useCallback(() => {
     webviewRef.current?.reload();
   }, []);
@@ -100,8 +111,10 @@ export default function BrowserScreen() {
   const handleLock = useCallback(async () => {
     if (!(await Kiosk.isEnabled())) {
       await Kiosk.enable();
+      setHidden(true);
     } else if (await Kiosk.isEnabled()) {
       await Kiosk.disable();
+      setHidden(false);
     }
   }, []);
 

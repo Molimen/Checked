@@ -1,6 +1,6 @@
 {
   "name": "Checked",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -24,6 +24,7 @@
     "react-native-safe-area-context": "^5.11.1",
     "react-native-screens": "^4.30.1",
     "react-native-svg": "^15.16.1",
+    "react-native-system-navigation-bar": "^3.0.1",
     "react-native-vector-icons": "^10.3.0",
     "react-native-webview": "^14.0.1"
   },
