@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView, { WebViewNavigation } from 'react-native-webview';
 import { storage } from '../services/storage';
 import DeviceInfo from 'react-native-device-info';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { Kiosk } from '../services/kiosk';
 import { useMMKVBoolean } from 'react-native-mmkv';
@@ -55,13 +55,13 @@ const styles = StyleSheet.create({
     height: 28,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 10,
     backgroundColor: SURFACE,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },
   batteryText: {
-    flex: 1,
     color: TEXT_SECONDARY,
     fontSize: 12,
   },
@@ -95,7 +95,60 @@ const BRIDGE_SCRIPT = `
       window.ReactNativeWebView.postMessage(JSON.stringify(payload));
     }
   }
+
+  // Mode flag, toggled at runtime from React Native via __ejSetMode().
+  // Mirrors the native app's useInAppKeyboard boolean (set in SplashActivity
+  // based on hardKeyboardHidden, but here it's just whatever RN tells it).
+  window.__ejMode = { inApp: true };
  
+  // Suppresses (or restores) the system's own on-screen keyboard.
+  // inputmode="none" must be set BEFORE an element is focused, or the OS
+  // keyboard still flashes up first. This is the JS-only equivalent of the
+  // native app's onCreateInputConnection() override — there is no
+  // dispatchKeyEvent-level way to do this from plain JS, so attribute-based
+  // suppression is the closest available approach in a WebView you don't
+  // control natively.
+  function applyKeyboardMode(el) {
+    if (!isEditable(el)) return;
+    if (window.__ejMode.inApp) {
+      if (el.getAttribute('inputmode') !== 'none') el.setAttribute('inputmode', 'none');
+    } else {
+      if (el.getAttribute('inputmode') === 'none') el.removeAttribute('inputmode');
+    }
+  }
+ 
+  function applyModeToAll(root) {
+    if (isEditable(root)) applyKeyboardMode(root);
+    var els = root.querySelectorAll ? root.querySelectorAll('input, textarea, [contenteditable]') : [];
+    for (var i = 0; i < els.length; i++) applyKeyboardMode(els[i]);
+  }
+ 
+  // Called from React Native: __ejSetMode(true | false)
+  window.__ejSetMode = function (inApp) {
+    window.__ejMode.inApp = !!inApp;
+    applyModeToAll(document.body);
+    // If we just turned the system keyboard back on while a field is
+    // focused, re-focusing nudges some WebView engines into showing it
+    // immediately instead of waiting for the next tap.
+    var active = document.activeElement;
+    if (!inApp && isEditable(active)) {
+      active.blur();
+      active.focus();
+    }
+  };
+ 
+  applyModeToAll(document.body);
+ 
+  // Catch inputs/textareas added after initial load (SPAs, dynamic forms).
+  new MutationObserver(function (mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var added = mutations[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        if (added[j].nodeType === 1) applyModeToAll(added[j]);
+      }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
   window.__ej = {
     i: function (ch) {
       var el = document.activeElement;
@@ -195,6 +248,8 @@ export default function BrowserScreen() {
 
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [inputType, setInputType] = useState<"text" | "number">('text');
+
+  const [useKnockoffKeyboard, setUseKnockoffKeyboard] = useState(false);
 
   useEffect(() => {
     if (hidden) {
@@ -309,6 +364,20 @@ export default function BrowserScreen() {
     }
   }, []);
 
+  useEffect(() => {
+    webviewRef.current?.injectJavaScript(`__ejSetMode(${useKnockoffKeyboard}); true;`);
+  }, [useKnockoffKeyboard]);
+
+  const handleLoadStart = useCallback(() => {
+    setIsLoading(true);
+    webviewRef.current?.injectJavaScript(BRIDGE_SCRIPT);
+  }, []);
+
+  const handleLoadEnd = useCallback(() => {
+    setIsLoading(false);
+    webviewRef.current?.injectJavaScript(`__ejSetMode(${useKnockoffKeyboard}); true;`);
+  }, [useKnockoffKeyboard]);
+
   const handleKeyPress = useCallback(({ output, type }: { output: string, type: KeyPressType}) => {
     let js;
     if (type === 'ok') {
@@ -343,36 +412,44 @@ export default function BrowserScreen() {
         source={{ uri: uri}}
         // source={{ uri: "https://acme.com/webapis/visibility.html"}} // DEBUGING ONLY
         style={styles.webview}
-        onLoadStart={() => setIsLoading(true)}
-        onLoadEnd={() => setIsLoading(false)}
+        onLoadStart={handleLoadStart}
+        onLoadEnd={handleLoadEnd}
         onLoadProgress={({ nativeEvent }) => setProgress(nativeEvent.progress)}
         userAgent={ua + ` EujianBrowser/${EUjianVersion}`}
         onNavigationStateChange={handleNavChange}
         injectedJavaScriptBeforeContentLoaded={BRIDGE_SCRIPT}
-        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+        // injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
         onMessage={handleMessage}
       />
 
       <View style={styles.statusBar}>
-        <TouchableOpacity onPress={handleLock} style={{ flex:1, paddingVertical:4 }}>
+        <TouchableOpacity onPress={handleLock} style={{ paddingVertical:4,}}>
           <Text style={styles.batteryText} numberOfLines={1}>
             {batteryText}
           </Text>
         </TouchableOpacity>
- 
-        <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
-          <Svg width={24} height={24} viewBox="0 0 24 24">
-            <Path
-              fill={"#6B7280"}
-              d="M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z"
-            />
-          </Svg>
+
+        <TouchableOpacity onPress={() => {setUseKnockoffKeyboard(!useKnockoffKeyboard); console.log(useKnockoffKeyboard)}}>
+          <Text style={{ color: BG_PRIMARY }}>
+            {useKnockoffKeyboard ? "ON" : "OFF"}
+          </Text>
         </TouchableOpacity>
  
-        <Text style={styles.clockText}>{clock}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
+            <Svg width={24} height={24} viewBox="0 0 24 24">
+              <Path
+                fill={"#6B7280"}
+                d="M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z"
+              />
+            </Svg>
+          </TouchableOpacity>
+  
+          <Text style={styles.clockText}>{clock}</Text>
+        </View>
       </View>
 
-      {keyboardVisible && (
+      {keyboardVisible && useKnockoffKeyboard && (
         <Keyboard
           inputType={inputType}
           onKeyPress={handleKeyPress}
