@@ -10,6 +10,7 @@ import { Kiosk } from '../services/kiosk';
 import { useMMKVBoolean } from 'react-native-mmkv';
 import { Button, Dialog, Portal, Text } from 'react-native-paper';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
+import Keyboard, { buildInjectedJs, type KeyPressType} from '../components/Keyboard';
 
 const EUjianVersion = "3.1.4"
 
@@ -81,6 +82,102 @@ function formatClock(date: Date) {
   return `${hh}:${mm}`;
 }
 
+const BRIDGE_SCRIPT = `
+(function () {
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+  }
+ 
+  function post(payload) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    }
+  }
+ 
+  window.__ej = {
+    i: function (ch) {
+      var el = document.activeElement;
+      if (!isEditable(el)) return;
+ 
+      if (el.isContentEditable) {
+        if (ch === '\\b') {
+          document.execCommand('delete');
+        } else {
+          document.execCommand('insertText', false, ch);
+        }
+        return;
+      }
+ 
+      var start = el.selectionStart == null ? el.value.length : el.selectionStart;
+      var end = el.selectionEnd == null ? el.value.length : el.selectionEnd;
+      var value = el.value;
+ 
+      if (ch === '\\b') {
+        if (start === end) {
+          if (start === 0) return;
+          el.value = value.slice(0, start - 1) + value.slice(end);
+          start = end = start - 1;
+        } else {
+          el.value = value.slice(0, start) + value.slice(end);
+        }
+      } else {
+        el.value = value.slice(0, start) + ch + value.slice(end);
+        start = end = start + ch.length;
+      }
+ 
+      el.selectionStart = el.selectionEnd = start;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+ 
+    // Called for the OK/Enter key: blurs the field (hides the keyboard)
+    // and fires a 'change' event, similar to pressing Enter.
+    ok: function () {
+      var el = document.activeElement;
+      if (isEditable(el)) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+      }
+    },
+  };
+ 
+  document.addEventListener(
+    'focusin',
+    function (e) {
+      if (!isEditable(e.target)) return;
+      var inputType = e.target.tagName === 'INPUT' ? (e.target.type || 'text') : 'text';
+      post({ kind: 'eujian-keyboard', event: 'focus', inputType: inputType });
+    },
+    true,
+  );
+ 
+  document.addEventListener(
+    'focusout',
+    function (e) {
+      if (!isEditable(e.target)) return;
+      post({ kind: 'eujian-keyboard', event: 'blur' });
+    },
+    true,
+  );
+
+  const def = (p, v) =>
+    Object.defineProperty(document, p, { get: () => v, configurable: true });
+  def('hidden', false);
+  def('visibilityState', 'visible');
+  def('webkitHidden', false);
+  def('webkitVisibilityState', 'visible');
+  document.hasFocus = () => true;
+
+  const block = (e) => e.stopImmediatePropagation();
+  document.addEventListener('visibilitychange', block, true);
+  window.addEventListener('visibilitychange', block, true);
+  window.addEventListener('pagehide', block, true);
+  window.addEventListener('blur', block, true);
+})();
+true;
+`;
+
 export default function BrowserScreen() {
   const isNumeric = (s: string) => /^\d+$/.test(s);
 
@@ -95,6 +192,9 @@ export default function BrowserScreen() {
   const [lastWarningExitDialog, setLastWarningExitDialog] = useState(false);
   
   const [hidden, setHidden] = useState(false);
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [inputType, setInputType] = useState<"text" | "number">('text');
 
   useEffect(() => {
     if (hidden) {
@@ -192,7 +292,34 @@ export default function BrowserScreen() {
     }
   };
 
+  const handleMessage = useCallback((event) => {
+    let msg;
+    try {
+      msg = JSON.parse(event.nativeEvent.data);
+    } catch (e) {
+      return; // not our message, or malformed — ignore
+    }
+    if (msg.kind !== 'eujian-keyboard') return;
+ 
+    if (msg.event === 'focus') {
+      setInputType(msg.inputType === 'number' ? 'number' : 'text');
+      setKeyboardVisible(true);
+    } else if (msg.event === 'blur') {
+      setKeyboardVisible(false);
+    }
+  }, []);
 
+  const handleKeyPress = useCallback(({ output, type }: { output: string, type: KeyPressType}) => {
+    let js;
+    if (type === 'ok') {
+      js = `__ej.ok(); true;`;
+    } else {
+      // covers 'char', 'space', 'backspace' — buildInjectedJs already
+      // special-cases backspace internally
+      js = buildInjectedJs(output, type);
+    }
+    webviewRef.current?.injectJavaScript(js);
+  }, []);
 
   return (
     <SafeAreaView style={[styles.root ,{ flex: 1 }]} edges={['top', 'bottom']}>
@@ -214,12 +341,16 @@ export default function BrowserScreen() {
       <WebView
         ref={webviewRef}
         source={{ uri: uri}}
+        // source={{ uri: "https://acme.com/webapis/visibility.html"}} // DEBUGING ONLY
         style={styles.webview}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
         onLoadProgress={({ nativeEvent }) => setProgress(nativeEvent.progress)}
         userAgent={ua + ` EujianBrowser/${EUjianVersion}`}
         onNavigationStateChange={handleNavChange}
+        injectedJavaScriptBeforeContentLoaded={BRIDGE_SCRIPT}
+        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+        onMessage={handleMessage}
       />
 
       <View style={styles.statusBar}>
@@ -241,6 +372,12 @@ export default function BrowserScreen() {
         <Text style={styles.clockText}>{clock}</Text>
       </View>
 
+      {keyboardVisible && (
+        <Keyboard
+          inputType={inputType}
+          onKeyPress={handleKeyPress}
+        />
+      )}
 
       <Portal>
         <Dialog visible={warningExitDialog} onDismiss={() => setWarningExitDialog(false)}>

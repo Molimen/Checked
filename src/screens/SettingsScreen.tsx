@@ -224,38 +224,36 @@ function ListUpdates() {
     setUpdateLoading(true);
     let cacheInfo = getCache<UpdateInfo>("cacheUpdate");
 
-    if (cacheInfo === null) {
-      let info: UpdateInfo | null = null;
+    let info: UpdateInfo | null = null;
 
-      try {
-        info = await checkForUpdate();
-      } catch (error) {
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
-          setIsThereIsAnyError(true);
-          setUpdateLoading(false);
-          setIsOnLatestUpdate(true);
-          return;
-        } else {
-          setErrorMessage("Failed to retrieve the data");
-          setIsThereIsAnyError(true);
-          setUpdateLoading(false);
-          setIsOnLatestUpdate(true);
-          return
-        }
-      }
-
-      if (info === null) {
-        setErrorMessage("Failed to retrieve the data");
+    try {
+      info = await checkForUpdate();
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrorMessage(error.message);
         setIsThereIsAnyError(true);
         setUpdateLoading(false);
         setIsOnLatestUpdate(true);
         return;
+      } else {
+        setErrorMessage("Failed to retrieve the data");
+        setIsThereIsAnyError(true);
+        setUpdateLoading(false);
+        setIsOnLatestUpdate(true);
+        return
       }
-
-      setCache("cacheUpdate", info);
-      cacheInfo = info;
     }
+
+    if (info === null) {
+      setErrorMessage("Failed to retrieve the data");
+      setIsThereIsAnyError(true);
+      setUpdateLoading(false);
+      setIsOnLatestUpdate(true);
+      return;
+    }
+
+    setCache("cacheUpdate", info);
+    cacheInfo = info;
 
     if (isNewerVersion(cacheInfo.version, DeviceInfo.getVersion())) {
       setIsOnLatestUpdate(false);
