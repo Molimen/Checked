@@ -8,7 +8,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'r
 import Svg, { Path } from 'react-native-svg';
 import { Kiosk } from '../services/kiosk';
 import { useMMKVBoolean } from 'react-native-mmkv';
-import { Button, Dialog, Portal, Text } from 'react-native-paper';
+import { Button, Dialog, Portal, Surface, Text } from 'react-native-paper';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
 import Keyboard, { buildInjectedJs, type KeyPressType} from '../components/Keyboard';
 
@@ -428,12 +428,6 @@ export default function BrowserScreen() {
             {batteryText}
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => {setUseKnockoffKeyboard(!useKnockoffKeyboard); console.log(useKnockoffKeyboard)}}>
-          <Text style={{ color: BG_PRIMARY }}>
-            {useKnockoffKeyboard ? "ON" : "OFF"}
-          </Text>
-        </TouchableOpacity>
  
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
@@ -445,7 +439,10 @@ export default function BrowserScreen() {
             </Svg>
           </TouchableOpacity>
   
+
+        <TouchableOpacity onPress={() => setUseKnockoffKeyboard(prev => !prev)}>
           <Text style={styles.clockText}>{clock}</Text>
+        </TouchableOpacity>
         </View>
       </View>
 
