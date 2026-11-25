@@ -118,6 +118,7 @@ export function buildInjectedJs(output: string, type: KeyPressType) {
  */
 export default function Keyboard({
   onKeyPress,
+  onKeyboardClose,
   inputType = 'text'
 }: {
   onKeyPress: ({ label, output, type }: {
@@ -125,6 +126,7 @@ export default function Keyboard({
       output: string;
       type: KeyPressType;
   }) => void,
+  onKeyboardClose: () => void,
   inputType: "text" | "number",
 }) {
   const [page, setPage] = useState(inputType === 'number' ? 'numeric' : 'qwerty');
@@ -188,11 +190,23 @@ export default function Keyboard({
 
   return (
     <View style={styles.container}>
+      {/* 24 dp keyboard handle area from the original Android keyboard. */}
+      <TouchableOpacity
+        onPress={onKeyboardClose}
+      >
+        <View style={styles.handleBar}>
+          <View style={styles.handleIndicator} />
+        </View>
+      </TouchableOpacity>
+
       {layout.map((row, ri) => (
         <View key={ri} style={styles.row}>
+          {/* The Java keyboard centers the second letter row with half-key spacers. */}
+          {page !== 'numeric' && ri === 1 && <View style={styles.halfKeySpacer} />}
           {row.map((k, ki) => {
             const isShiftKey = k.type === KeyType.SHIFT;
             const shiftActive = isShiftKey && isUpper;
+            const isOkKey = k.type === KeyType.OK;
             const label =
               k.type === KeyType.CHAR && isUpper ? k.label.toUpperCase() : k.label;
             const displayLabel = isShiftKey ? (capsLock ? '⇧̲' : '⇧') : label;
@@ -206,6 +220,7 @@ export default function Keyboard({
                   styles.key,
                   { flex: k.weight },
                   k.type !== KeyType.CHAR && styles.specialKey,
+                  isOkKey && styles.okKey,
                   shiftActive && styles.shiftActiveKey,
                 ]}
               >
@@ -213,6 +228,7 @@ export default function Keyboard({
                   style={[
                     styles.keyText,
                     k.type !== KeyType.CHAR && styles.specialKeyText,
+                    isOkKey && styles.okKeyText,
                     shiftActive && styles.shiftActiveText,
                     isShiftKey && capsLock && styles.underline,
                   ]}
@@ -223,6 +239,7 @@ export default function Keyboard({
               </TouchableOpacity>
             );
           })}
+          {page !== 'numeric' && ri === 1 && <View style={styles.halfKeySpacer} />}
         </View>
       ))}
     </View>
@@ -232,16 +249,40 @@ export default function Keyboard({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.background,
-    paddingHorizontal: 2,
-    paddingBottom: 2,
+    // Exact outer padding from the Java constructor.
+    paddingHorizontal: 4,
+    paddingBottom: 0,
   },
+  // The Java keyboard creates a 24 dp handle row before the key rows.
+  handleBar: {
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
+  handleIndicator: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  // Java uses a 46 dp row. Each key is inset 2 dp horizontally
+  // and 3 dp vertically inside that row.
   row: {
+    height: 46,
     flexDirection: 'row',
-    marginVertical: 3,
+  },
+  halfKeySpacer: {
+    flex: 0.5,
   },
   key: {
-    height: 46,
+    flex: 1,
     marginHorizontal: 2,
+    marginVertical: 3,
     borderRadius: 6,
     backgroundColor: COLORS.keyBg,
     alignItems: 'center',
@@ -249,6 +290,13 @@ const styles = StyleSheet.create({
   },
   specialKey: {
     backgroundColor: COLORS.specialBg,
+  },
+  okKey: {
+    backgroundColor: COLORS.accentCyan,
+  },
+  okKeyText: {
+    color: COLORS.darkText,
+    fontWeight: 'bold',
   },
   shiftActiveKey: {
     backgroundColor: COLORS.accentCyan,

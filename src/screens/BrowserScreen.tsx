@@ -460,6 +460,7 @@ export default function BrowserScreen() {
         <Keyboard
           inputType={inputType}
           onKeyPress={handleKeyPress}
+          onKeyboardClose={() => setKeyboardVisible(false)}
         />
       )}
 
