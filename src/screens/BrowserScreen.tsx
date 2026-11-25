@@ -84,149 +84,149 @@ function formatClock(date: Date) {
 
 const BRIDGE_SCRIPT = `
 (function () {
-  function isEditable(el) {
-    if (!el) return false;
-    var tag = el.tagName;
-    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
-  }
- 
-  function post(payload) {
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+  try {
+    function isEditable(el) {
+      if (!el) return false;
+      var tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
     }
-  }
 
-  // Mode flag, toggled at runtime from React Native via __ejSetMode().
-  // Mirrors the native app's useInAppKeyboard boolean (set in SplashActivity
-  // based on hardKeyboardHidden, but here it's just whatever RN tells it).
-  window.__ejMode = { inApp: true };
- 
-  // Suppresses (or restores) the system's own on-screen keyboard.
-  // inputmode="none" must be set BEFORE an element is focused, or the OS
-  // keyboard still flashes up first. This is the JS-only equivalent of the
-  // native app's onCreateInputConnection() override — there is no
-  // dispatchKeyEvent-level way to do this from plain JS, so attribute-based
-  // suppression is the closest available approach in a WebView you don't
-  // control natively.
-  function applyKeyboardMode(el) {
-    if (!isEditable(el)) return;
-    if (window.__ejMode.inApp) {
-      if (el.getAttribute('inputmode') !== 'none') el.setAttribute('inputmode', 'none');
-    } else {
-      if (el.getAttribute('inputmode') === 'none') el.removeAttribute('inputmode');
-    }
-  }
- 
-  function applyModeToAll(root) {
-    if (isEditable(root)) applyKeyboardMode(root);
-    var els = root.querySelectorAll ? root.querySelectorAll('input, textarea, [contenteditable]') : [];
-    for (var i = 0; i < els.length; i++) applyKeyboardMode(els[i]);
-  }
- 
-  // Called from React Native: __ejSetMode(true | false)
-  window.__ejSetMode = function (inApp) {
-    window.__ejMode.inApp = !!inApp;
-    applyModeToAll(document.body);
-    // If we just turned the system keyboard back on while a field is
-    // focused, re-focusing nudges some WebView engines into showing it
-    // immediately instead of waiting for the next tap.
-    var active = document.activeElement;
-    if (!inApp && isEditable(active)) {
-      active.blur();
-      active.focus();
-    }
-  };
- 
-  applyModeToAll(document.body);
- 
-  // Catch inputs/textareas added after initial load (SPAs, dynamic forms).
-  new MutationObserver(function (mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      var added = mutations[i].addedNodes;
-      for (var j = 0; j < added.length; j++) {
-        if (added[j].nodeType === 1) applyModeToAll(added[j]);
+    function post(payload) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
       }
     }
-  }).observe(document.documentElement, { childList: true, subtree: true });
 
-  window.__ej = {
-    i: function (ch) {
-      var el = document.activeElement;
+    // Do not run this script two times on the same page.
+    if (window.__ejInstalled) return;
+    window.__ejInstalled = true;
+
+    window.__ejMode = { inApp: true };
+
+    function applyKeyboardMode(el) {
       if (!isEditable(el)) return;
- 
-      if (el.isContentEditable) {
-        if (ch === '\\b') {
-          document.execCommand('delete');
-        } else {
-          document.execCommand('insertText', false, ch);
-        }
-        return;
-      }
- 
-      var start = el.selectionStart == null ? el.value.length : el.selectionStart;
-      var end = el.selectionEnd == null ? el.value.length : el.selectionEnd;
-      var value = el.value;
- 
-      if (ch === '\\b') {
-        if (start === end) {
-          if (start === 0) return;
-          el.value = value.slice(0, start - 1) + value.slice(end);
-          start = end = start - 1;
-        } else {
-          el.value = value.slice(0, start) + value.slice(end);
-        }
+      if (window.__ejMode.inApp) {
+        if (el.getAttribute('inputmode') !== 'none') el.setAttribute('inputmode', 'none');
       } else {
-        el.value = value.slice(0, start) + ch + value.slice(end);
-        start = end = start + ch.length;
+        if (el.getAttribute('inputmode') === 'none') el.removeAttribute('inputmode');
       }
- 
-      el.selectionStart = el.selectionEnd = start;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    },
- 
-    // Called for the OK/Enter key: blurs the field (hides the keyboard)
-    // and fires a 'change' event, similar to pressing Enter.
-    ok: function () {
-      var el = document.activeElement;
-      if (isEditable(el)) {
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
+    }
+
+    function applyModeToAll(root) {
+      if (!root) return; // FIX: body is null before the page loads
+      if (isEditable(root)) applyKeyboardMode(root);
+      var els = root.querySelectorAll ? root.querySelectorAll('input, textarea, [contenteditable]') : [];
+      for (var i = 0; i < els.length; i++) applyKeyboardMode(els[i]);
+    }
+
+    window.__ejSetMode = function (inApp) {
+      window.__ejMode.inApp = !!inApp;
+      applyModeToAll(document.body);
+      var active = document.activeElement;
+      if (!inApp && isEditable(active)) {
+        active.blur();
+        active.focus();
       }
-    },
-  };
- 
-  document.addEventListener(
-    'focusin',
-    function (e) {
+    };
+
+    window.__ej = {
+      i: function (ch) {
+        var el = document.activeElement;
+        if (!isEditable(el)) return;
+
+        if (el.isContentEditable) {
+          if (ch === '\\b') {
+            document.execCommand('delete');
+          } else {
+            document.execCommand('insertText', false, ch);
+          }
+          return;
+        }
+
+        var start = el.selectionStart == null ? el.value.length : el.selectionStart;
+        var end = el.selectionEnd == null ? el.value.length : el.selectionEnd;
+        var value = el.value;
+
+        if (ch === '\\b') {
+          if (start === end) {
+            if (start === 0) return;
+            el.value = value.slice(0, start - 1) + value.slice(end);
+            start = end = start - 1;
+          } else {
+            el.value = value.slice(0, start) + value.slice(end);
+          }
+        } else {
+          el.value = value.slice(0, start) + ch + value.slice(end);
+          start = end = start + ch.length;
+        }
+
+        el.selectionStart = el.selectionEnd = start;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      },
+
+      ok: function () {
+        var el = document.activeElement;
+        if (isEditable(el)) {
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          el.blur();
+        }
+      },
+    };
+
+    document.addEventListener('focusin', function (e) {
       if (!isEditable(e.target)) return;
       var inputType = e.target.tagName === 'INPUT' ? (e.target.type || 'text') : 'text';
       post({ kind: 'eujian-keyboard', event: 'focus', inputType: inputType });
-    },
-    true,
-  );
- 
-  document.addEventListener(
-    'focusout',
-    function (e) {
+    }, true);
+
+    document.addEventListener('focusout', function (e) {
       if (!isEditable(e.target)) return;
       post({ kind: 'eujian-keyboard', event: 'blur' });
-    },
-    true,
-  );
+    }, true);
 
-  const def = (p, v) =>
-    Object.defineProperty(document, p, { get: () => v, configurable: true });
-  def('hidden', false);
-  def('visibilityState', 'visible');
-  def('webkitHidden', false);
-  def('webkitVisibilityState', 'visible');
-  document.hasFocus = () => true;
+    // Visibility overrides
+    var def = function (p, v) {
+      Object.defineProperty(document, p, { get: function () { return v; }, configurable: true });
+    };
+    def('hidden', false);
+    def('visibilityState', 'visible');
+    def('webkitHidden', false);
+    def('webkitVisibilityState', 'visible');
+    document.hasFocus = function () { return true; };
 
-  const block = (e) => e.stopImmediatePropagation();
-  document.addEventListener('visibilitychange', block, true);
-  window.addEventListener('visibilitychange', block, true);
-  window.addEventListener('pagehide', block, true);
-  window.addEventListener('blur', block, true);
+    var block = function (e) { e.stopImmediatePropagation(); };
+    document.addEventListener('visibilitychange', block, true);
+    window.addEventListener('visibilitychange', block, true);
+    window.addEventListener('pagehide', block, true);
+    window.addEventListener('blur', function (e) {
+      if (e.target === window) e.stopImmediatePropagation();
+    }, true);
+
+    // Observe documentElement. It always exists.
+    new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          if (added[j].nodeType === 1) applyModeToAll(added[j]);
+        }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    // FIX: do the body work only when the DOM is ready.
+    function onReady() {
+      applyModeToAll(document.body);
+      document.documentElement.style.outline = '4px solid red'; // TEST MARK: remove later
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', onReady);
+    } else {
+      onReady();
+    }
+  } catch (err) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ kind: 'bridge-error', msg: String(err) }));
+    }
+  }
 })();
 true;
 `;
@@ -305,6 +305,10 @@ export default function BrowserScreen() {
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (hidden) {
+          return true;
+        }
+
         setWarningExitDialog(true);
 
         return true;
@@ -312,7 +316,7 @@ export default function BrowserScreen() {
     );
     
     return () => backHandler.remove();
-  }, []);
+  }, [hidden]);
 
 
   const tenantCode = storage.getString('tenant_code');
@@ -340,10 +344,16 @@ export default function BrowserScreen() {
     batteryLevel === -1 ? '🔋 --%' : `🔋 ${Math.round(batteryLevel * 100)}%`;
 
 
-  const handleNavChange = (navState: WebViewNavigation) => {
+  const handleNavChange = async (navState: WebViewNavigation) => {
     console.log(navState);
     if (navState.url.includes('seb-quit-confirmed')) {
-      navigation.goBack()
+      navigation.goBack();
+
+      if (await Kiosk.isEnabled()) {
+        await Kiosk.disable();
+        setHidden(false);
+        SystemNavigationBar.show();
+      }
     }
   };
 
@@ -370,7 +380,7 @@ export default function BrowserScreen() {
 
   const handleLoadStart = useCallback(() => {
     setIsLoading(true);
-    webviewRef.current?.injectJavaScript(BRIDGE_SCRIPT);
+    // webviewRef.current?.injectJavaScript(BRIDGE_SCRIPT);
   }, []);
 
   const handleLoadEnd = useCallback(() => {
