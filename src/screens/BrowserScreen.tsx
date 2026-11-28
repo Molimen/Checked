@@ -11,6 +11,7 @@ import { useMMKVBoolean } from 'react-native-mmkv';
 import { Button, Dialog, Portal, Surface, Text } from 'react-native-paper';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
 import Keyboard, { buildInjectedJs, type KeyPressType} from '../components/Keyboard';
+import { VolumeManager } from 'react-native-volume-manager';
 
 const EUjianVersion = "3.1.4"
 
@@ -250,6 +251,30 @@ export default function BrowserScreen() {
   const [inputType, setInputType] = useState<"text" | "number">('text');
 
   const [useKnockoffKeyboard, setUseKnockoffKeyboard] = useState(false);
+  const [disableBottomButton, setDisableBottomButton] = useState(false);
+
+  useEffect(() => {
+    // Read the current volume (value is 0 to 1)
+    VolumeManager.getVolume().then((result) => {
+      if (result.volume === 0) {
+        setDisableBottomButton(false);
+      } else {
+        setDisableBottomButton(true);
+      }
+    });
+
+    // Listen for changes (button press or system change)
+    const listener = VolumeManager.addVolumeListener((result) => {
+      if (result.volume === 0) {
+        setDisableBottomButton(false);
+      } else {
+        setDisableBottomButton(true);
+      }
+    });
+
+    // Remove the listener when the component unmounts
+    return () => listener.remove();
+  }, []);
 
   useEffect(() => {
     if (hidden) {
@@ -264,6 +289,10 @@ export default function BrowserScreen() {
   }, []);
 
   const handleLock = useCallback(async () => {
+    if (disableBottomButton) {
+      return
+    }
+
     if (!(await Kiosk.isEnabled())) {
       await Kiosk.enable();
       setHidden(true);
@@ -271,7 +300,15 @@ export default function BrowserScreen() {
       await Kiosk.disable();
       setHidden(false);
     }
-  }, []);
+  }, [disableBottomButton]);
+
+  const handleKeyboardable = useCallback(() => {
+    if (disableBottomButton) {
+      return
+    }
+
+    setUseKnockoffKeyboard(prev => !prev);
+  }, [disableBottomButton]);
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatClock(new Date())), 1000);
@@ -450,7 +487,7 @@ export default function BrowserScreen() {
           </TouchableOpacity>
   
 
-        <TouchableOpacity onPress={() => setUseKnockoffKeyboard(prev => !prev)}>
+        <TouchableOpacity onPress={handleKeyboardable}>
           <Text style={styles.clockText}>{clock}</Text>
         </TouchableOpacity>
         </View>

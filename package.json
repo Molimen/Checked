@@ -1,6 +1,6 @@
 {
   "name": "Checked",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -26,6 +26,7 @@
     "react-native-svg": "^15.16.1",
     "react-native-system-navigation-bar": "^3.0.1",
     "react-native-vector-icons": "^10.3.0",
+    "react-native-volume-manager": "^2.2.0",
     "react-native-webview": "^14.0.1"
   },
   "devDependencies": {

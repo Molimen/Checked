@@ -70,7 +70,7 @@ export default function AboutScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24, padding: 16, gap: 12 }}
         showsVerticalScrollIndicator={false}
       >
-        <View
+        {/* <View
           style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
         >
           <TouchableRipple
@@ -187,7 +187,7 @@ export default function AboutScreen() {
           </View>
         </FieldCard>
 
-        <Divider bold />
+        <Divider bold /> */}
 
         <FieldCard>
           <View style={{ flexDirection: 'row' }}>
